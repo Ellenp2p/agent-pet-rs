@@ -470,7 +470,7 @@ fn update_ui(
 // ============================================================
 
 fn main() {
-    configure_backend();
+    configure_backend(None);
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(FrameworkPlugin)

@@ -1,4 +1,3 @@
-use bevy::prelude::*;
 use pet_rs::prelude::*;
 
 #[cfg(test)]
@@ -9,7 +8,7 @@ mod hook_tests {
 
     #[test]
     fn test_hook_register_and_trigger() {
-        let registry = HookRegistry::default();
+        let mut registry = HookRegistry::default();
         let counter = Arc::new(AtomicU32::new(0));
         let c = counter.clone();
 
@@ -20,7 +19,7 @@ mod hook_tests {
         registry.trigger(
             "on_spawn",
             &HookContext {
-                entity: Entity::from_raw(0),
+                entity: bevy::prelude::Entity::from_raw(0),
             },
         );
 
@@ -29,7 +28,7 @@ mod hook_tests {
 
     #[test]
     fn test_hook_multiple_subscribers() {
-        let registry = HookRegistry::default();
+        let mut registry = HookRegistry::default();
         let counter = Arc::new(AtomicU32::new(0));
 
         for _ in 0..3 {
@@ -42,7 +41,7 @@ mod hook_tests {
         registry.trigger(
             "on_tick",
             &HookContext {
-                entity: Entity::from_raw(0),
+                entity: bevy::prelude::Entity::from_raw(0),
             },
         );
 
@@ -51,7 +50,7 @@ mod hook_tests {
 
     #[test]
     fn test_hook_separate_keys() {
-        let registry = HookRegistry::default();
+        let mut registry = HookRegistry::default();
         let a = Arc::new(AtomicU32::new(0));
         let b = Arc::new(AtomicU32::new(0));
 
@@ -66,7 +65,7 @@ mod hook_tests {
         });
 
         let ctx = HookContext {
-            entity: Entity::from_raw(0),
+            entity: bevy::prelude::Entity::from_raw(0),
         };
         registry.trigger("key_a", &ctx);
         registry.trigger("key_b", &ctx);
@@ -77,7 +76,7 @@ mod hook_tests {
 
     #[test]
     fn test_hook_clear() {
-        let registry = HookRegistry::default();
+        let mut registry = HookRegistry::default();
         registry.register_fn("test", |_ctx| {});
         assert_eq!(registry.count("test"), 1);
 
@@ -87,7 +86,7 @@ mod hook_tests {
 
     #[test]
     fn test_hook_no_trigger_wrong_key() {
-        let registry = HookRegistry::default();
+        let mut registry = HookRegistry::default();
         let counter = Arc::new(AtomicU32::new(0));
         let c = counter.clone();
 
@@ -98,11 +97,36 @@ mod hook_tests {
         registry.trigger(
             "wrong_key",
             &HookContext {
-                entity: Entity::from_raw(0),
+                entity: bevy::prelude::Entity::from_raw(0),
             },
         );
 
         assert_eq!(counter.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_hook_trigger_with_no_callbacks() {
+        let registry = HookRegistry::default();
+        // Should not panic when triggering a key with no callbacks
+        registry.trigger(
+            "nonexistent",
+            &HookContext {
+                entity: bevy::prelude::Entity::from_raw(0),
+            },
+        );
+    }
+
+    #[test]
+    fn test_hook_clear_all() {
+        let mut registry = HookRegistry::default();
+        registry.register_fn("a", |_ctx| {});
+        registry.register_fn("b", |_ctx| {});
+        assert!(registry.count("a") > 0);
+        assert!(registry.count("b") > 0);
+
+        registry.clear_all();
+        assert_eq!(registry.count("a"), 0);
+        assert_eq!(registry.count("b"), 0);
     }
 }
 
@@ -114,7 +138,7 @@ mod network_channel_tests {
     fn test_generic_channel_i32() {
         let channel: NetworkChannel<i32> = NetworkChannel::default();
         channel.send(42).unwrap();
-        let msgs = channel.drain_outgoing();
+        let msgs = channel.drain_outgoing().unwrap();
         assert_eq!(msgs, vec![42]);
     }
 
@@ -123,7 +147,7 @@ mod network_channel_tests {
         let channel: NetworkChannel<String> = NetworkChannel::default();
         channel.send("hello".into()).unwrap();
         channel.send("world".into()).unwrap();
-        let msgs = channel.drain_outgoing();
+        let msgs = channel.drain_outgoing().unwrap();
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0], "hello");
         assert_eq!(msgs[1], "world");
@@ -134,7 +158,7 @@ mod network_channel_tests {
         let channel: NetworkChannel<u64> = NetworkChannel::default();
         channel.inject_incoming(100).unwrap();
         channel.inject_incoming(200).unwrap();
-        let msgs = channel.drain_incoming();
+        let msgs = channel.drain_incoming().unwrap();
         assert_eq!(msgs, vec![100, 200]);
     }
 
@@ -142,10 +166,10 @@ mod network_channel_tests {
     fn test_channel_drain_clears() {
         let channel: NetworkChannel<&str> = NetworkChannel::default();
         channel.send("a").unwrap();
-        let first = channel.drain_outgoing();
+        let first = channel.drain_outgoing().unwrap();
         assert_eq!(first.len(), 1);
 
-        let second = channel.drain_outgoing();
+        let second = channel.drain_outgoing().unwrap();
         assert!(second.is_empty());
     }
 
@@ -159,8 +183,39 @@ mod network_channel_tests {
 
         let channel: NetworkChannel<Dto> = NetworkChannel::default();
         channel.send(Dto { id: 1, value: 3.14 }).unwrap();
-        let msgs = channel.drain_outgoing();
+        let msgs = channel.drain_outgoing().unwrap();
         assert_eq!(msgs[0].id, 1);
+    }
+
+    #[test]
+    fn test_channel_send_returns_ok() {
+        let channel: NetworkChannel<i32> = NetworkChannel::default();
+        let result = channel.send(1);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_channel_drain_returns_ok() {
+        let channel: NetworkChannel<i32> = NetworkChannel::default();
+        assert!(channel.drain_outgoing().is_ok());
+        assert!(channel.drain_incoming().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use pet_rs::error::FrameworkError;
+
+    #[test]
+    fn test_error_display() {
+        let err = FrameworkError::LockPoisoned;
+        assert_eq!(err.to_string(), "resource lock poisoned");
+
+        let err = FrameworkError::ChannelClosed("test".into());
+        assert!(err.to_string().contains("test"));
+
+        let err = FrameworkError::Plugin("crashed".into());
+        assert!(err.to_string().contains("crashed"));
     }
 }
 

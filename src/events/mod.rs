@@ -1,3 +1,1 @@
-pub mod pet_events;
-
-pub use pet_events::*;
+// empty - events are defined by plugins

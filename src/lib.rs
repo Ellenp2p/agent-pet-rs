@@ -1,11 +1,12 @@
 #![allow(clippy::type_complexity)]
 
+pub mod hooks;
+pub mod network;
+pub mod plugins;
+
 pub mod components;
 pub mod events;
-pub mod hooks;
-pub mod plugins;
 pub mod systems;
-pub mod network;
 
 #[cfg(feature = "wasm-plugin")]
 pub mod wasm;
@@ -13,9 +14,16 @@ pub mod wasm;
 pub mod prelude;
 
 use bevy::prelude::*;
+use bevy::prelude::SystemSet;
 
-use plugins::pet_plugin::PetPlugin;
-use plugins::network_plugin::NetworkPlugin;
+use hooks::HookRegistry;
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum FrameworkSet {
+    Input,
+    Process,
+    Output,
+}
 
 pub fn configure_backend() {
     if std::env::var("WGPU_BACKEND").is_err() {
@@ -23,11 +31,20 @@ pub fn configure_backend() {
     }
 }
 
-pub struct PetFrameworkPlugin;
+pub struct FrameworkPlugin;
 
-impl Plugin for PetFrameworkPlugin {
+impl Plugin for FrameworkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(PetPlugin)
-            .add_plugins(NetworkPlugin);
+        app.init_resource::<HookRegistry>()
+            .init_resource::<network::NetworkConfig>()
+            .configure_sets(
+                Update,
+                (
+                    FrameworkSet::Input,
+                    FrameworkSet::Process,
+                    FrameworkSet::Output,
+                )
+                    .chain(),
+            );
     }
 }

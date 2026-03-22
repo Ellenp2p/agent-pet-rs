@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
-pub struct WasmPlugin;
+pub struct WasmPluginBevy;
 
-impl Plugin for WasmPlugin {
+impl Plugin for WasmPluginBevy {
     fn build(&self, app: &mut App) {
         app.init_resource::<crate::wasm::WasmPluginHost>();
     }

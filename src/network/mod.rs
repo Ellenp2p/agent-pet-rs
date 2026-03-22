@@ -1,12 +1,7 @@
-pub mod dto;
-pub mod http_client;
-pub mod websocket;
-
-pub use dto::*;
-
 use bevy::prelude::*;
-use tokio::sync::mpsc;
+use std::marker::PhantomData;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 #[derive(Resource, Clone)]
 pub struct NetworkConfig {
@@ -26,54 +21,65 @@ impl Default for NetworkConfig {
 }
 
 #[derive(Resource)]
-pub struct NetworkChannel {
-    tx: Arc<mpsc::UnboundedSender<PetStateDto>>,
-    rx: Arc<std::sync::Mutex<mpsc::UnboundedReceiver<PetStateDto>>>,
-    incoming_tx: Arc<mpsc::UnboundedSender<PetStateDto>>,
-    incoming_rx: Arc<std::sync::Mutex<mpsc::UnboundedReceiver<PetStateDto>>>,
+pub struct NetworkChannel<T>
+where
+    T: Send + Sync + 'static,
+{
+    outgoing_tx: Arc<mpsc::UnboundedSender<T>>,
+    outgoing_rx: Arc<std::sync::Mutex<mpsc::UnboundedReceiver<T>>>,
+    incoming_tx: Arc<mpsc::UnboundedSender<T>>,
+    incoming_rx: Arc<std::sync::Mutex<mpsc::UnboundedReceiver<T>>>,
+    _marker: PhantomData<T>,
 }
 
-impl Default for NetworkChannel {
+impl<T> Default for NetworkChannel<T>
+where
+    T: Send + Sync + 'static,
+{
     fn default() -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let (incoming_tx, incoming_rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
         Self {
-            tx: Arc::new(tx),
-            rx: Arc::new(std::sync::Mutex::new(rx)),
-            incoming_tx: Arc::new(incoming_tx),
-            incoming_rx: Arc::new(std::sync::Mutex::new(incoming_rx)),
+            outgoing_tx: Arc::new(out_tx),
+            outgoing_rx: Arc::new(std::sync::Mutex::new(out_rx)),
+            incoming_tx: Arc::new(in_tx),
+            incoming_rx: Arc::new(std::sync::Mutex::new(in_rx)),
+            _marker: PhantomData,
         }
     }
 }
 
-impl NetworkChannel {
-    pub fn send_update(&self, dto: PetStateDto) -> Result<(), String> {
-        self.tx
-            .send(dto)
-            .map_err(|e| format!("Failed to send: {}", e))
+impl<T> NetworkChannel<T>
+where
+    T: Send + Sync + 'static,
+{
+    pub fn send(&self, msg: T) -> Result<(), String> {
+        self.outgoing_tx
+            .send(msg)
+            .map_err(|e| format!("Send failed: {}", e))
     }
 
-    pub fn receive_updates(&self) -> Vec<PetStateDto> {
-        let mut rx = self.rx.lock().unwrap();
-        let mut updates = Vec::new();
-        while let Ok(dto) = rx.try_recv() {
-            updates.push(dto);
+    pub fn drain_outgoing(&self) -> Vec<T> {
+        let mut rx = self.outgoing_rx.lock().unwrap();
+        let mut msgs = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            msgs.push(msg);
         }
-        updates
+        msgs
     }
 
-    pub fn inject_incoming(&self, dto: PetStateDto) -> Result<(), String> {
+    pub fn inject_incoming(&self, msg: T) -> Result<(), String> {
         self.incoming_tx
-            .send(dto)
-            .map_err(|e| format!("Failed to inject: {}", e))
+            .send(msg)
+            .map_err(|e| format!("Inject failed: {}", e))
     }
 
-    pub fn receive_incoming(&self) -> Vec<PetStateDto> {
+    pub fn drain_incoming(&self) -> Vec<T> {
         let mut rx = self.incoming_rx.lock().unwrap();
-        let mut updates = Vec::new();
-        while let Ok(dto) = rx.try_recv() {
-            updates.push(dto);
+        let mut msgs = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            msgs.push(msg);
         }
-        updates
+        msgs
     }
 }

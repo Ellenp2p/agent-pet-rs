@@ -1,10 +1,10 @@
-use super::WasmPetPlugin;
+use super::WasmPlugin;
 use bevy::prelude::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Resource)]
 pub struct WasmPluginHost {
-    plugins: Arc<Mutex<Vec<Box<dyn WasmPetPlugin>>>>,
+    plugins: Arc<Mutex<Vec<Box<dyn WasmPlugin>>>>,
 }
 
 impl Default for WasmPluginHost {
@@ -16,37 +16,23 @@ impl Default for WasmPluginHost {
 }
 
 impl WasmPluginHost {
-    pub fn register(&self, plugin: Box<dyn WasmPetPlugin>) {
+    pub fn register(&self, plugin: Box<dyn WasmPlugin>) {
         let mut plugins = self.plugins.lock().unwrap();
         info!("Registered WASM plugin: {}", plugin.name());
         plugins.push(plugin);
     }
 
-    pub fn trigger_on_tick(&self, pet_id: u64) {
+    pub fn trigger_on_tick(&self, entity_id: u64) {
         let plugins = self.plugins.lock().unwrap();
         for plugin in plugins.iter() {
-            plugin.on_tick(pet_id);
+            plugin.on_tick(entity_id);
         }
     }
 
-    pub fn trigger_on_feed(&self, pet_id: u64, amount: f32) {
+    pub fn trigger_on_event(&self, entity_id: u64, event: &str, data: &str) {
         let plugins = self.plugins.lock().unwrap();
         for plugin in plugins.iter() {
-            plugin.on_feed(pet_id, amount);
-        }
-    }
-
-    pub fn trigger_on_state_change(&self, pet_id: u64, old_state: &str, new_state: &str) {
-        let plugins = self.plugins.lock().unwrap();
-        for plugin in plugins.iter() {
-            plugin.on_state_change(pet_id, old_state, new_state);
-        }
-    }
-
-    pub fn trigger_on_network_sync(&self, pet_id: u64) {
-        let plugins = self.plugins.lock().unwrap();
-        for plugin in plugins.iter() {
-            plugin.on_network_sync(pet_id);
+            plugin.on_event(entity_id, event, data);
         }
     }
 

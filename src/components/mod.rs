@@ -1,3 +1,1 @@
-pub mod pet;
-
-pub use pet::*;
+// empty - components are defined by plugins

@@ -465,6 +465,21 @@ fn setup_ui(
             warn!("Stats WASM plugin file not found at {:?}", stats_path);
         }
 
+        // Load reader plugin
+        let reader_path = Path::new(
+            "examples/wasm_reader/target/wasm32-unknown-unknown/release/wasm_reader.wasm",
+        );
+        if reader_path.exists() {
+            match _wasm_host.register_wasm(reader_path, Some("reader_plugin".into())) {
+                Ok(()) => {
+                    info!("Reader WASM plugin loaded successfully");
+                }
+                Err(e) => error!("Failed to load Reader WASM plugin: {}", e),
+            }
+        } else {
+            warn!("Reader WASM plugin file not found at {:?}", reader_path);
+        }
+
         let count = _wasm_host.plugin_count().unwrap_or(0);
         info!("Total WASM plugins: {}", count);
     }

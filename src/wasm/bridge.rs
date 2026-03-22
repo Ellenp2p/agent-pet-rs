@@ -17,6 +17,8 @@ pub struct WasmPluginHost {
     plugins: Arc<Mutex<Vec<Box<dyn WasmPlugin>>>>,
     #[cfg(feature = "wasm-plugin")]
     plugin_states: Arc<Mutex<HashMap<WasmPluginId, Vec<u8>>>>,
+    #[cfg(feature = "wasm-plugin")]
+    plugin_data: Arc<Mutex<HashMap<WasmPluginId, HashMap<String, Vec<u8>>>>>,
 }
 
 impl WasmPluginHost {
@@ -64,6 +66,14 @@ impl WasmPluginHost {
             states
                 .entry(WasmPluginId::new(new_id.clone()))
                 .or_insert_with(Vec::new);
+
+            // Initialize empty data storage for new plugin
+            let mut data = self
+                .plugin_data
+                .lock()
+                .map_err(|_| FrameworkError::LockPoisoned)?;
+            data.entry(WasmPluginId::new(new_id))
+                .or_insert_with(HashMap::new);
         }
 
         Ok(())
@@ -152,6 +162,11 @@ impl WasmPluginHost {
             .lock()
             .map_err(|_| FrameworkError::LockPoisoned)?;
 
+        // Check if this is a plugin data request
+        if event.starts_with("plugin_request:") {
+            return self.handle_plugin_request(entity_id, event, data, &plugins);
+        }
+
         for plugin in plugins.iter() {
             plugin.on_event(super::WasmEntityId(entity_id), event, data);
 
@@ -165,6 +180,47 @@ impl WasmPluginHost {
                 states.insert(plugin_id, state);
             }
         }
+        Ok(())
+    }
+
+    /// Handle plugin data request events
+    #[cfg(feature = "wasm-plugin")]
+    fn handle_plugin_request(
+        &self,
+        entity_id: u64,
+        event: &str,
+        _data: &str,
+        plugins: &Vec<Box<dyn WasmPlugin>>,
+    ) -> Result<(), FrameworkError> {
+        // Parse request: "plugin_request:target_plugin:data_key"
+        let parts: Vec<&str> = event.split(':').collect();
+        if parts.len() < 3 {
+            return Ok(());
+        }
+
+        let target_plugin_id = parts[1];
+        let data_key = parts[2];
+
+        // Find the requesting plugin (the one that sent the request)
+        // For now, we'll use the entity_id to identify the requesting plugin
+        // In a real implementation, you'd want to track which plugin sent the request
+
+        // Read data from target plugin
+        if let Some(target_plugin) = plugins.iter().find(|p| p.id().as_str() == target_plugin_id) {
+            if let Some(plugin_data) = target_plugin.get_state() {
+                // Convert data to hex string for transmission
+                let hex_data: String = plugin_data.iter().map(|b| format!("{:02x}", b)).collect();
+
+                // Send response event back to requesting plugin
+                let response_event = format!("plugin_response:{}:{}", target_plugin_id, data_key);
+
+                // Trigger response event for all plugins (the requesting plugin will handle it)
+                for plugin in plugins.iter() {
+                    plugin.on_event(super::WasmEntityId(entity_id), &response_event, &hex_data);
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -226,6 +282,67 @@ impl WasmPluginHost {
 
     #[cfg(not(feature = "wasm-plugin"))]
     pub fn remove_plugin_state(&self, _plugin_id: &str) -> Result<(), FrameworkError> {
+        Ok(())
+    }
+
+    /// Read data from another plugin (inter-plugin communication).
+    #[cfg(feature = "wasm-plugin")]
+    pub fn read_plugin_data(
+        &self,
+        source_plugin_id: &str,
+        data_key: &str,
+    ) -> Result<Option<Vec<u8>>, FrameworkError> {
+        let data = self
+            .plugin_data
+            .lock()
+            .map_err(|_| FrameworkError::LockPoisoned)?;
+
+        let source_id = WasmPluginId::new(source_plugin_id);
+        if let Some(plugin_data) = data.get(&source_id) {
+            Ok(plugin_data.get(data_key).cloned())
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[cfg(not(feature = "wasm-plugin"))]
+    pub fn read_plugin_data(
+        &self,
+        _source_plugin_id: &str,
+        _data_key: &str,
+    ) -> Result<Option<Vec<u8>>, FrameworkError> {
+        Ok(None)
+    }
+
+    /// Write data to plugin (for inter-plugin communication).
+    #[cfg(feature = "wasm-plugin")]
+    pub fn write_plugin_data(
+        &self,
+        plugin_id: &str,
+        data_key: &str,
+        data: Vec<u8>,
+    ) -> Result<(), FrameworkError> {
+        let mut plugin_data = self
+            .plugin_data
+            .lock()
+            .map_err(|_| FrameworkError::LockPoisoned)?;
+
+        let id = WasmPluginId::new(plugin_id);
+        plugin_data
+            .entry(id)
+            .or_insert_with(HashMap::new)
+            .insert(data_key.to_string(), data);
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "wasm-plugin"))]
+    pub fn write_plugin_data(
+        &self,
+        _plugin_id: &str,
+        _data_key: &str,
+        _data: Vec<u8>,
+    ) -> Result<(), FrameworkError> {
         Ok(())
     }
 }

@@ -13,8 +13,8 @@ pub mod wasm;
 
 pub mod prelude;
 
-use bevy::prelude::*;
 use bevy::prelude::SystemSet;
+use bevy::prelude::*;
 
 use hooks::HookRegistry;
 

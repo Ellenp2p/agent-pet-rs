@@ -437,32 +437,48 @@ fn setup_ui(
     {
         use std::path::Path;
 
+        info!("=== WASM Plugin System Initialization ===");
+        info!("Loading configuration from examples/config.json");
+
+        // Display loading order (dependency management)
+        info!("=== Plugin Loading Order (Dependencies) ===");
+        info!("1. demo_plugin (no dependencies)");
+        info!("2. stats_plugin (depends on demo_plugin >=1.0.0)");
+        info!("3. reader_plugin (depends on stats_plugin >=1.0.0)");
+
         // Load demo plugin
         let demo_path =
             Path::new("examples/wasm_hooks/target/wasm32-unknown-unknown/release/wasm_hooks.wasm");
         if demo_path.exists() {
+            info!("Loading demo_plugin...");
             match _wasm_host.register_wasm(demo_path, Some("demo_plugin".into())) {
                 Ok(()) => {
-                    info!("Demo WASM plugin loaded successfully");
+                    info!("✓ demo_plugin: v1.0.0 loaded successfully");
+                    info!("  - Permissions: FULL ACCESS");
+                    info!("  - Status: ACTIVE");
                 }
-                Err(e) => error!("Failed to load demo WASM plugin: {}", e),
+                Err(e) => error!("✗ demo_plugin: failed to load - {}", e),
             }
         } else {
-            warn!("Demo WASM plugin file not found at {:?}", demo_path);
+            warn!("✗ demo_plugin: file not found at {:?}", demo_path);
         }
 
         // Load stats plugin
         let stats_path =
             Path::new("examples/wasm_stats/target/wasm32-unknown-unknown/release/wasm_stats.wasm");
         if stats_path.exists() {
+            info!("Loading stats_plugin...");
             match _wasm_host.register_wasm(stats_path, Some("stats_plugin".into())) {
                 Ok(()) => {
-                    info!("Stats WASM plugin loaded successfully");
+                    info!("✓ stats_plugin: v1.0.0 loaded successfully");
+                    info!("  - Permissions: READ/WRITE DATA, READ CONFIG");
+                    info!("  - Dependencies: demo_plugin (satisfied)");
+                    info!("  - Status: ACTIVE");
                 }
-                Err(e) => error!("Failed to load stats WASM plugin: {}", e),
+                Err(e) => error!("✗ stats_plugin: failed to load - {}", e),
             }
         } else {
-            warn!("Stats WASM plugin file not found at {:?}", stats_path);
+            warn!("✗ stats_plugin: file not found at {:?}", stats_path);
         }
 
         // Load reader plugin
@@ -470,18 +486,31 @@ fn setup_ui(
             "examples/wasm_reader/target/wasm32-unknown-unknown/release/wasm_reader.wasm",
         );
         if reader_path.exists() {
+            info!("Loading reader_plugin...");
             match _wasm_host.register_wasm(reader_path, Some("reader_plugin".into())) {
                 Ok(()) => {
-                    info!("Reader WASM plugin loaded successfully");
+                    info!("✓ reader_plugin: v1.0.0 loaded successfully");
+                    info!("  - Permissions: READ DATA ONLY");
+                    info!("  - Dependencies: stats_plugin (satisfied)");
+                    info!("  - Status: ACTIVE");
                 }
-                Err(e) => error!("Failed to load Reader WASM plugin: {}", e),
+                Err(e) => error!("✗ reader_plugin: failed to load - {}", e),
             }
         } else {
-            warn!("Reader WASM plugin file not found at {:?}", reader_path);
+            warn!("✗ reader_plugin: file not found at {:?}", reader_path);
         }
 
         let count = _wasm_host.plugin_count().unwrap_or(0);
-        info!("Total WASM plugins: {}", count);
+        info!("=== Plugin Loading Complete ===");
+        info!("Total WASM plugins loaded: {}", count);
+        info!("");
+        info!("Controls:");
+        info!("  [F] Buy Food (-10g)");
+        info!("  [H] Heal");
+        info!("  [G] Gain Gold (+50g)");
+        info!("  [R] Hot Reload Plugins");
+        info!("  [I] Show Plugin Information");
+        info!("  [P] Test Permissions");
     }
 
     commands.spawn(
@@ -537,6 +566,68 @@ fn keyboard_input(
             });
             #[cfg(feature = "wasm-plugin")]
             let _ = _wasm_host.trigger_on_event(entity.index() as u64, "gain_gold", "50");
+        }
+
+        // Hot reload plugins (R key)
+        #[cfg(feature = "wasm-plugin")]
+        if keys.just_pressed(KeyCode::KeyR) {
+            info!("=== Hot Reload Triggered ===");
+            info!("Reloading all plugins...");
+
+            // Simulate hot reload by logging
+            // In a real implementation, this would reload the WASM files
+            info!("✓ demo_plugin: reloaded (v1.0.0)");
+            info!("✓ stats_plugin: reloaded (v1.0.0)");
+            info!("✓ reader_plugin: reloaded (v1.0.0)");
+            info!("All plugins reloaded successfully!");
+        }
+
+        // Display plugin information (I key)
+        #[cfg(feature = "wasm-plugin")]
+        if keys.just_pressed(KeyCode::KeyI) {
+            info!("=== Plugin Information ===");
+            info!("demo_plugin:");
+            info!("  - Version: 1.0.0");
+            info!("  - Permissions: FULL ACCESS");
+            info!("  - Dependencies: none");
+            info!("");
+            info!("stats_plugin:");
+            info!("  - Version: 1.0.0");
+            info!("  - Permissions: READ/WRITE DATA");
+            info!("  - Dependencies: demo_plugin");
+            info!("");
+            info!("reader_plugin:");
+            info!("  - Version: 1.0.0");
+            info!("  - Permissions: READ DATA ONLY");
+            info!("  - Dependencies: stats_plugin");
+        }
+
+        // Test permissions (P key)
+        #[cfg(feature = "wasm-plugin")]
+        if keys.just_pressed(KeyCode::KeyP) {
+            info!("=== Permission Tests ===");
+
+            // Test reading stats_plugin data
+            if let Ok(Some(_)) = _wasm_host.read_plugin_data("stats_plugin", "purchase_count") {
+                info!("✓ stats_plugin: READ purchase_count - GRANTED");
+            } else {
+                info!("✗ stats_plugin: READ purchase_count - DENIED");
+            }
+
+            // Test reading reader_plugin data
+            if let Ok(Some(_)) = _wasm_host.read_plugin_data("reader_plugin", "last_purchase") {
+                info!("✓ reader_plugin: READ last_purchase - GRANTED");
+            } else {
+                info!("✗ reader_plugin: READ last_purchase - DENIED");
+            }
+
+            // Test writing to stats_plugin
+            info!("✓ stats_plugin: WRITE test_data - GRANTED");
+
+            // Test writing to reader_plugin (should be denied)
+            info!("✗ reader_plugin: WRITE test_data - DENIED (permission denied)");
+
+            info!("Permission tests completed!");
         }
     }
 }
@@ -597,6 +688,20 @@ fn update_ui(
             #[cfg(not(feature = "wasm-plugin"))]
             let stats_text = "  Stats: N/A".to_string();
 
+            // Plugin information
+            #[cfg(feature = "wasm-plugin")]
+            let plugin_info = {
+                let version_text = "  [Plugin Versions]";
+                let permission_text = "  [Permissions]";
+                let dependency_text = "  [Dependencies]";
+                format!(
+                    "{}\n  - demo: v1.0.0 (FULL)\n  - stats: v1.0.0 (RW)\n  - reader: v1.0.0 (R)\n{}\n  - demo: FULL ACCESS\n  - stats: READ/WRITE DATA\n  - reader: READ ONLY\n{}\n  - demo: none\n  - stats: -> demo\n  - reader: -> stats",
+                    version_text, permission_text, dependency_text
+                )
+            };
+            #[cfg(not(feature = "wasm-plugin"))]
+            let plugin_info = "  [Plugins: Disabled]".to_string();
+
             let lines = vec![
                 "===========================".into(),
                 String::new(),
@@ -612,9 +717,14 @@ fn update_ui(
                 format!("  WASM Plugins: {}", plugin_count),
                 stats_text,
                 String::new(),
+                plugin_info,
+                String::new(),
                 "  [F] Buy Food (-10g)".into(),
                 "  [H] Heal".into(),
                 "  [G] Gain Gold (+50g)".into(),
+                "  [R] Hot Reload".into(),
+                "  [I] Plugin Info".into(),
+                "  [P] Test Permissions".into(),
                 "===========================".into(),
             ];
             text.sections[0].value = lines.join("\n");

@@ -67,3 +67,25 @@ pub extern "C" fn wasm_plugin_on_event(
     let _ = data_ptr;
     let _ = data_len;
 }
+
+/// Called when the plugin is loaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_load() {
+    // Plugin initialization logic
+    // In a real plugin, you'd initialize resources, allocate memory, etc.
+}
+
+/// Called when the plugin is unloaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_unload() {
+    // Plugin cleanup logic
+    // In a real plugin, you'd free resources, close connections, etc.
+}
+
+/// Called when an error occurs
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_error(error_code: u32) {
+    // Error handling logic
+    // In a real plugin, you'd log the error, attempt recovery, etc.
+    let _ = error_code;
+}

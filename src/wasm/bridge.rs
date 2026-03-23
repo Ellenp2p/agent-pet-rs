@@ -87,8 +87,16 @@ impl WasmPluginHost {
 
         // Check if plugin with same ID exists (replace)
         if let Some(pos) = plugins.iter().position(|p| p.id().as_str() == new_id) {
+            // Call on_unload for the old plugin before replacing
+            if let Err(e) = plugins[pos].on_unload() {
+                log::warn!("Failed to call on_unload for plugin '{}': {}", new_id, e);
+            }
             info!("WASM plugin '{}' replaced (hot reload)", new_id);
             plugins[pos] = Box::new(new_plugin);
+            // Call on_load for the new plugin
+            if let Err(e) = plugins[pos].on_load() {
+                log::error!("Failed to call on_load for plugin '{}': {}", new_id, e);
+            }
         } else {
             info!("WASM plugin '{}' loaded", new_id);
             plugins.push(Box::new(new_plugin));
@@ -106,8 +114,15 @@ impl WasmPluginHost {
                 .plugin_data
                 .lock()
                 .map_err(|_| FrameworkError::LockPoisoned)?;
-            data.entry(WasmPluginId::new(new_id))
+            data.entry(WasmPluginId::new(new_id.clone()))
                 .or_insert_with(HashMap::new);
+
+            // Call on_load for the new plugin
+            if let Some(plugin) = plugins.last() {
+                if let Err(e) = plugin.on_load() {
+                    log::error!("Failed to call on_load for plugin '{}': {}", new_id, e);
+                }
+            }
         }
 
         Ok(())
@@ -138,6 +153,11 @@ impl WasmPluginHost {
             .ok_or_else(|| {
                 FrameworkError::WasmUnload(format!("plugin not found: {}", plugin_id))
             })?;
+
+        // Call on_unload before removing the plugin
+        if let Err(e) = plugins[pos].on_unload() {
+            log::warn!("Failed to call on_unload for plugin '{}': {}", plugin_id, e);
+        }
 
         let removed = plugins.remove(pos);
         info!("WASM plugin '{}' unloaded", removed.name());

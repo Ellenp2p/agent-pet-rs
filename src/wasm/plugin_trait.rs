@@ -31,6 +31,11 @@ pub trait WasmPlugin: Send + Sync {
 
     // Read statistics from WASM memory
     fn get_stats(&self) -> Option<PluginStats>;
+
+    // Lifecycle hooks
+    fn on_load(&self) -> Result<(), crate::error::FrameworkError>;
+    fn on_unload(&self) -> Result<(), crate::error::FrameworkError>;
+    fn on_error(&self, error: &crate::error::FrameworkError);
 }
 
 /// Plugin statistics structure

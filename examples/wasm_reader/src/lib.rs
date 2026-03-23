@@ -127,3 +127,30 @@ pub extern "C" fn wasm_plugin_on_event(
     let _ = data_ptr;
     let _ = data_len;
 }
+
+/// Called when the plugin is loaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_load() {
+    // 初始化读取器状态
+    unsafe {
+        STATE = ReaderState {
+            last_purchase_count: 0,
+            last_heal_count: 0,
+            last_gold_earned: 0,
+            read_count: 0,
+        };
+    }
+}
+
+/// Called when the plugin is unloaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_unload() {
+    // 清理逻辑（当前无特殊清理需求）
+}
+
+/// Called when an error occurs
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_error(error_code: u32) {
+    // 错误处理逻辑
+    let _ = error_code;
+}

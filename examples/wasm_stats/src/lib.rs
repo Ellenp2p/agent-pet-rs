@@ -174,3 +174,31 @@ pub extern "C" fn wasm_plugin_get_stats() -> *const u8 {
 pub extern "C" fn wasm_plugin_get_stats_len() -> usize {
     12 // Stats 结构体的大小
 }
+
+/// Called when the plugin is loaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_load() {
+    // 初始化统计数据
+    unsafe {
+        STATS = Stats {
+            purchase_count: 0,
+            heal_count: 0,
+            gold_earned: 0,
+        };
+    }
+    // 导出初始统计数据
+    export_stats();
+}
+
+/// Called when the plugin is unloaded
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_unload() {
+    // 清理逻辑（当前无特殊清理需求）
+}
+
+/// Called when an error occurs
+#[no_mangle]
+pub extern "C" fn wasm_plugin_on_error(error_code: u32) {
+    // 错误处理逻辑
+    let _ = error_code;
+}

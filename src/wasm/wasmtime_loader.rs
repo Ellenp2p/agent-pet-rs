@@ -574,4 +574,78 @@ impl WasmPlugin for WasmtimePlugin {
         }
         None
     }
+
+    fn on_load(&self) -> Result<(), crate::error::FrameworkError> {
+        // 尝试调用 wasm_plugin_on_load 函数（如果存在）
+        let result = Self::create_instance_with_name(&self.engine, &self.wasm_bytes);
+        match result {
+            Ok((_name, instance, mut store, _memory, _on_tick, _on_event)) => {
+                if let Ok(on_load_func) =
+                    instance.get_typed_func::<(), ()>(&mut store, "wasm_plugin_on_load")
+                {
+                    if let Err(e) = on_load_func.call(&mut store, ()) {
+                        log::warn!("wasm_plugin_on_load call failed: {}", e);
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => Err(crate::error::FrameworkError::WasmLoad(format!(
+                "Failed to create instance for on_load: {}",
+                e
+            ))),
+        }
+    }
+
+    fn on_unload(&self) -> Result<(), crate::error::FrameworkError> {
+        // 尝试调用 wasm_plugin_on_unload 函数（如果存在）
+        let result = Self::create_instance_with_name(&self.engine, &self.wasm_bytes);
+        match result {
+            Ok((_name, instance, mut store, _memory, _on_tick, _on_event)) => {
+                if let Ok(on_unload_func) =
+                    instance.get_typed_func::<(), ()>(&mut store, "wasm_plugin_on_unload")
+                {
+                    if let Err(e) = on_unload_func.call(&mut store, ()) {
+                        log::warn!("wasm_plugin_on_unload call failed: {}", e);
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => Err(crate::error::FrameworkError::WasmLoad(format!(
+                "Failed to create instance for on_unload: {}",
+                e
+            ))),
+        }
+    }
+
+    fn on_error(&self, error: &crate::error::FrameworkError) {
+        // 尝试调用 wasm_plugin_on_error 函数（如果存在）
+        let result = Self::create_instance_with_name(&self.engine, &self.wasm_bytes);
+        match result {
+            Ok((_name, instance, mut store, memory, _on_tick, _on_event)) => {
+                if let Ok(on_error_func) =
+                    instance.get_typed_func::<(u32,), ()>(&mut store, "wasm_plugin_on_error")
+                {
+                    // 将错误信息写入内存
+                    let error_msg = error.to_string();
+                    let error_bytes = error_msg.as_bytes();
+                    let mem_data = memory.data_mut(&mut store);
+                    let scratch_start = 0;
+                    let scratch_end = scratch_start + Self::SCRATCH_SIZE;
+
+                    if error_bytes.len() <= scratch_end - scratch_start {
+                        mem_data[scratch_start..scratch_start + error_bytes.len()]
+                            .copy_from_slice(error_bytes);
+
+                        // 调用 on_error，传递错误代码 1（通用错误）
+                        if let Err(e) = on_error_func.call(&mut store, (1,)) {
+                            log::warn!("wasm_plugin_on_error call failed: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to create instance for on_error: {}", e);
+            }
+        }
+    }
 }

@@ -48,6 +48,9 @@ use wasm_stub::WasmPluginHost;
 #[derive(Component, Debug, Clone)]
 struct Pet;
 
+#[derive(Component)]
+struct UiPanel;
+
 #[derive(Component, Debug, Clone, Copy)]
 struct Hunger {
     value: f32,
@@ -440,13 +443,11 @@ fn setup_ui(
         info!("=== WASM Plugin System Initialization ===");
         info!("Loading configuration from examples/config.json");
 
-        // Display loading order (dependency management)
         info!("=== Plugin Loading Order (Dependencies) ===");
         info!("1. demo_plugin (no dependencies)");
         info!("2. stats_plugin (depends on demo_plugin >=1.0.0)");
         info!("3. reader_plugin (depends on stats_plugin >=1.0.0)");
 
-        // Load demo plugin
         let demo_path =
             Path::new("examples/wasm_hooks/target/wasm32-unknown-unknown/release/wasm_hooks.wasm");
         if demo_path.exists() {
@@ -463,7 +464,6 @@ fn setup_ui(
             warn!("✗ demo_plugin: file not found at {:?}", demo_path);
         }
 
-        // Load stats plugin
         let stats_path =
             Path::new("examples/wasm_stats/target/wasm32-unknown-unknown/release/wasm_stats.wasm");
         if stats_path.exists() {
@@ -481,7 +481,6 @@ fn setup_ui(
             warn!("✗ stats_plugin: file not found at {:?}", stats_path);
         }
 
-        // Load reader plugin
         let reader_path = Path::new(
             "examples/wasm_reader/target/wasm32-unknown-unknown/release/wasm_reader.wasm",
         );
@@ -513,22 +512,24 @@ fn setup_ui(
         info!("  [P] Test Permissions");
     }
 
-    commands.spawn(
+    // Single UI panel - TUI style
+    commands.spawn((
         TextBundle::from_section(
             "Loading...",
             TextStyle {
-                font_size: 28.0,
+                font_size: 20.0,
                 color: Color::WHITE,
                 ..default()
             },
         )
         .with_style(Style {
             position_type: PositionType::Absolute,
-            top: Val::Px(30.0),
-            left: Val::Px(30.0),
+            top: Val::Px(15.0),
+            left: Val::Px(15.0),
             ..default()
         }),
-    );
+        UiPanel,
+    ));
 }
 
 fn keyboard_input(
@@ -634,102 +635,125 @@ fn keyboard_input(
 
 fn update_ui(
     pet_query: Query<(&PetName, &Hunger, &Health, &PetState, &Mood, &Wallet), With<Pet>>,
-    mut text_query: Query<&mut Text>,
+    mut ui_query: Query<(&mut Text, Option<&UiPanel>)>,
     _wasm_host: Res<WasmPluginHost>,
 ) {
-    for (name, hunger, health, state, mood, wallet) in pet_query.iter() {
-        for mut text in text_query.iter_mut() {
-            #[cfg(feature = "wasm-plugin")]
-            let plugin_count = _wasm_host.plugin_count().unwrap_or(0);
-            #[cfg(not(feature = "wasm-plugin"))]
-            let plugin_count = 0;
+    let pet = pet_query.iter().next();
+    if pet.is_none() {
+        return;
+    }
+    let (name, hunger, health, state, mood, wallet) = pet.unwrap();
 
-            // Get stats from plugin data (inter-plugin communication)
-            #[cfg(feature = "wasm-plugin")]
-            let stats_text = {
-                let purchase = if let Ok(Some(data)) =
-                    _wasm_host.read_plugin_data("stats_plugin", "purchase_count")
-                {
-                    if data.len() >= 4 {
-                        u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
-                    } else {
-                        0
-                    }
+    #[cfg(feature = "wasm-plugin")]
+    let plugin_count = _wasm_host.plugin_count().unwrap_or(0);
+    #[cfg(not(feature = "wasm-plugin"))]
+    let plugin_count = 0;
+
+    #[cfg(feature = "wasm-plugin")]
+    let stats_text = {
+        let purchase =
+            if let Ok(Some(data)) = _wasm_host.read_plugin_data("stats_plugin", "purchase_count") {
+                if data.len() >= 4 {
+                    u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
                 } else {
                     0
-                };
-
-                let heal = if let Ok(Some(data)) =
-                    _wasm_host.read_plugin_data("stats_plugin", "heal_count")
-                {
-                    if data.len() >= 4 {
-                        u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-
-                let gold = if let Ok(Some(data)) =
-                    _wasm_host.read_plugin_data("stats_plugin", "gold_earned")
-                {
-                    if data.len() >= 4 {
-                        u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
-                    } else {
-                        0
-                    }
-                } else {
-                    0
-                };
-
-                format!("  Stats: P:{} H:{} G:{}", purchase, heal, gold)
+                }
+            } else {
+                0
             };
-            #[cfg(not(feature = "wasm-plugin"))]
-            let stats_text = "  Stats: N/A".to_string();
-
-            // Plugin information
-            #[cfg(feature = "wasm-plugin")]
-            let plugin_info = {
-                let version_text = "  [Plugin Versions]";
-                let permission_text = "  [Permissions]";
-                let dependency_text = "  [Dependencies]";
-                format!(
-                    "{}\n  - demo: v1.0.0 (FULL)\n  - stats: v1.0.0 (RW)\n  - reader: v1.0.0 (R)\n{}\n  - demo: FULL ACCESS\n  - stats: READ/WRITE DATA\n  - reader: READ ONLY\n{}\n  - demo: none\n  - stats: -> demo\n  - reader: -> stats",
-                    version_text, permission_text, dependency_text
-                )
+        let heal = if let Ok(Some(data)) = _wasm_host.read_plugin_data("stats_plugin", "heal_count")
+        {
+            if data.len() >= 4 {
+                u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        let gold =
+            if let Ok(Some(data)) = _wasm_host.read_plugin_data("stats_plugin", "gold_earned") {
+                if data.len() >= 4 {
+                    u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
+                } else {
+                    0
+                }
+            } else {
+                0
             };
-            #[cfg(not(feature = "wasm-plugin"))]
-            let plugin_info = "  [Plugins: Disabled]".to_string();
+        format!("Stats: P:{} H:{} G:{}", purchase, heal, gold)
+    };
+    #[cfg(not(feature = "wasm-plugin"))]
+    let stats_text = String::new();
 
-            let lines = vec![
-                "===========================".into(),
-                String::new(),
-                format!("      {}", name.0),
-                String::new(),
-                "===========================".into(),
-                String::new(),
-                format!("  Hunger: {:.0} / {:.0}", hunger.value, hunger.max),
-                format!("  Health: {:.0} / {:.0}", health.value, health.max),
-                format!("  State:  {:?}", state),
-                format!("  Mood:   {:?}", mood),
-                format!("  Gold:   {}", wallet.gold),
-                format!("  WASM Plugins: {}", plugin_count),
-                stats_text,
-                String::new(),
-                plugin_info,
-                String::new(),
-                "  [F] Buy Food (-10g)".into(),
-                "  [H] Heal".into(),
-                "  [G] Gain Gold (+50g)".into(),
-                "  [R] Hot Reload".into(),
-                "  [I] Plugin Info".into(),
-                "  [P] Test Permissions".into(),
-                "===========================".into(),
-            ];
-            text.sections[0].value = lines.join("\n");
+    let mood_emoji = match mood {
+        Mood::Happy => "Happy",
+        Mood::Neutral => "Neutral",
+        Mood::Sad => "Sad",
+        Mood::Sick => "Sick",
+        Mood::Dead => "Dead",
+    };
+    let state_str = match state {
+        PetState::Idle => "Idle",
+        PetState::Hungry => "Hungry",
+        PetState::Eating => "Eating",
+        PetState::Sick => "Sick",
+        PetState::Dead => "Dead",
+    };
+
+    let health_pct = (health.ratio() * 100.0) as i32;
+    let hunger_pct = (hunger.ratio() * 100.0) as i32;
+    let health_bar = make_bar(health.ratio());
+    let hunger_bar = make_bar(hunger.ratio());
+
+    let panel = format!(
+        "+--------------------------------------------------------------------+\n\
+         |  VIRTUAL PET - WASM Plugin Demo                                    |\n\
+         +========================+===========================================+\n\
+         | PET STATUS             | WASM PLUGINS                              |\n\
+         |                        |                                           |\n\
+         | Name: {name:<17} | [Versions]                                |\n\
+         | Health: {health_bar} {hpct:>3}% | * demo: v1.0.0 (FULL)                 |\n\
+         | Hunger: {hunger_bar} {hprct:>3}% | * stats: v1.0.0 (RW)                  |\n\
+         | Mood:   {mood_emoji:<15} | * reader: v1.0.0 (R)                 |\n\
+         | Gold:   {gold:<14} |                                           |\n\
+         | State:  {state_str:<14} | [Permissions]                             |\n\
+         | Plugins: {pcnt:<13} | * demo: FULL ACCESS                      |\n\
+         |                        | * stats: READ/WRITE                       |\n\
+         | {stext} | * reader: READ ONLY                        |\n\
+         +========================+===========================================+\n\
+         | [F] Food  [H] Heal  [G] Gold  [R] Reload  [I] Info  [P] Perms |\n\
+         +--------------------------------------------------------------------+",
+        name = name.0,
+        health_bar = health_bar,
+        hpct = health_pct,
+        hunger_bar = hunger_bar,
+        hprct = hunger_pct,
+        mood_emoji = mood_emoji,
+        gold = wallet.gold,
+        state_str = state_str,
+        pcnt = plugin_count,
+        stext = stats_text,
+    );
+
+    for (mut text, ui_panel) in ui_query.iter_mut() {
+        if ui_panel.is_some() {
+            text.sections[0].value = panel.clone();
         }
     }
+}
+
+fn make_bar(ratio: f32) -> String {
+    let filled = (ratio * 10.0) as i32;
+    let empty = 10 - filled;
+    let mut bar = String::new();
+    for _ in 0..filled {
+        bar.push('#');
+    }
+    for _ in 0..empty {
+        bar.push('.');
+    }
+    bar
 }
 
 // ============================================================
@@ -739,9 +763,17 @@ fn update_ui(
 fn main() {
     configure_backend(None);
 
-    // Create and configure the app
+    let window_plugin = WindowPlugin {
+        primary_window: Some(Window {
+            title: "Virtual Pet - WASM Plugin Demo".into(),
+            resolution: (1024., 768.).into(),
+            ..default()
+        }),
+        ..default()
+    };
+
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
+    app.add_plugins(DefaultPlugins.set(window_plugin))
         .add_plugins(FrameworkPlugin)
         .add_plugins(PetPlugin);
 

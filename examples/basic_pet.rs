@@ -384,26 +384,40 @@ fn shop_purchase_system(
     for ev in events.read() {
         // 获取物品价格（从插件获取或使用默认值）
         #[cfg(feature = "wasm-plugin")]
-        let price = get_item_price(ev.item_id, &wasm_host);
+        let original_price = get_item_price(ev.item_id, &wasm_host);
         #[cfg(not(feature = "wasm-plugin"))]
-        let price = get_item_price(ev.item_id);
+        let original_price = get_item_price(ev.item_id);
+
+        // 检查折扣
+        #[cfg(feature = "wasm-plugin")]
+        let (discount_amount, final_price) = check_discount(original_price, &wasm_host);
+        #[cfg(not(feature = "wasm-plugin"))]
+        let (discount_amount, final_price) = (0, original_price);
 
         // 检查金币是否足够
         if let Ok(wallet) = pet_query.get(ev.entity) {
-            if wallet.gold < price {
+            if wallet.gold < final_price {
                 warn!(
                     "Not enough gold for item {} (has {}, needs {})",
-                    ev.item_id, wallet.gold, price
+                    ev.item_id, wallet.gold, final_price
                 );
                 continue;
             }
+        }
+
+        // 显示折扣信息
+        if discount_amount > 0 {
+            info!(
+                "🎉 Discount applied! {}% off! Original: {}g, Final: {}g",
+                discount_amount, original_price, final_price
+            );
         }
 
         // 发送消费事件
         spend_events.send(SpendEvent {
             entity: ev.entity,
             currency: "gold".into(),
-            amount: price,
+            amount: final_price,
         });
 
         // 根据物品ID应用效果
@@ -445,6 +459,23 @@ fn shop_purchase_system(
             &ev.item_id.to_string(),
         );
     }
+}
+
+#[cfg(feature = "wasm-plugin")]
+fn check_discount(original_price: u32, wasm_host: &BevyWasmPluginHost) -> (u32, u32) {
+    // 从 DiscountPlugin 获取折扣信息
+    if let Ok(Some(data)) = wasm_host.read_plugin_data("DiscountPlugin", "last_discount") {
+        if data.len() >= 4 {
+            let discount_percent = u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]));
+            if discount_percent > 0 && discount_percent <= 100 {
+                let discount_amount =
+                    (original_price as f32 * discount_percent as f32 / 100.0) as u32;
+                let final_price = original_price.saturating_sub(discount_amount);
+                return (discount_percent, final_price);
+            }
+        }
+    }
+    (0, original_price)
 }
 
 #[cfg(feature = "wasm-plugin")]
@@ -673,6 +704,30 @@ fn setup_ui(
             );
         }
 
+        // Load discount plugin
+        let discount_path = Path::new(
+            "examples/wasm_discount/target/wasm32-unknown-unknown/release/wasm_discount.wasm",
+        );
+        if discount_path.exists() {
+            info!("Loading DiscountPlugin...");
+            match wasm_host.register_wasm(discount_path, Some("DiscountPlugin".into())) {
+                Ok(()) => {
+                    info!("✓ DiscountPlugin: v1.0.0 loaded successfully");
+                    info!("  - Permissions: READ/WRITE DATA");
+                    info!("  - Dependencies: none");
+                    info!("  - Status: ACTIVE");
+                    info!("  - Features:");
+                    info!("    - Probabilistic discount (20% base chance)");
+                    info!("    - VIP system (+5% per level)");
+                    info!("    - Consecutive purchase bonus (+2% per purchase)");
+                    info!("    - Discount amount: 10%-50%");
+                }
+                Err(e) => error!("✗ DiscountPlugin: failed to load - {}", e),
+            }
+        } else {
+            warn!("✗ DiscountPlugin: file not found at {:?}", discount_path);
+        }
+
         let count = wasm_host.plugin_count().unwrap_or(0);
         info!("=== Plugin Loading Complete ===");
         info!("Total WASM plugins loaded: {}", count);
@@ -885,6 +940,34 @@ fn update_ui(
     #[cfg(not(feature = "wasm-plugin"))]
     let stats_text = String::new();
 
+    #[cfg(feature = "wasm-plugin")]
+    let discount_text = {
+        let vip_level =
+            if let Ok(Some(data)) = wasm_host.read_plugin_data("DiscountPlugin", "vip_level") {
+                if data.len() >= 4 {
+                    u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
+        let discount_chance = if let Ok(Some(data)) =
+            wasm_host.read_plugin_data("DiscountPlugin", "discount_chance")
+        {
+            if data.len() >= 4 {
+                u32::from_le_bytes(data[0..4].try_into().unwrap_or([0; 4]))
+            } else {
+                20
+            }
+        } else {
+            20
+        };
+        format!("VIP: Lv.{}  Disc: {}%", vip_level, discount_chance)
+    };
+    #[cfg(not(feature = "wasm-plugin"))]
+    let discount_text = String::new();
+
     let mood_emoji = match mood {
         Mood::Happy => "Happy",
         Mood::Neutral => "Neutral",
@@ -918,7 +1001,7 @@ fn update_ui(
          | Gold:   {gold:<14} |                                           |\n\
          | State:  {state_str:<14} | Plugin Effects:                           |\n\
          | Plugins: {pcnt:<13} | - Dynamic pricing (5% per purchase)       |\n\
-         |                        | - Unlock: Premium at 5 purchases          |\n\
+         | {dtext:<23} | - Unlock: Premium at 5 purchases          |\n\
          | {stext} | - Discount: 10% after 10 purchases       |\n\
          +========================+===========================================+\n\
          | [1-3] Buy Items  [F] Quick Food  [H] Heal  [G] Gold  [I] Info  |\n\
@@ -932,6 +1015,7 @@ fn update_ui(
         gold = wallet.gold,
         state_str = state_str,
         pcnt = plugin_count,
+        dtext = discount_text,
         stext = stats_text,
     );
 

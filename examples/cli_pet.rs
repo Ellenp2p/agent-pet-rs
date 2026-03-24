@@ -152,6 +152,8 @@ struct App {
     last_update: Instant,
     update_interval: Duration,
     messages: Vec<String>,
+    vip_level: u32,
+    discount_chance: u32,
 }
 
 impl App {
@@ -177,6 +179,8 @@ impl App {
             last_update: Instant::now(),
             update_interval: Duration::from_millis(500),
             messages: vec!["Welcome to Virtual Pet!".to_string()],
+            vip_level: 1,
+            discount_chance: 20,
         }
     }
 
@@ -200,15 +204,56 @@ impl App {
         self.update();
     }
 
+    fn calculate_discount_chance(&self) -> u32 {
+        let mut chance = 20;
+        chance += self.vip_level * 5;
+        chance += self.stats.purchases * 2;
+        chance.min(80)
+    }
+
+    fn try_discount(&self) -> Option<u32> {
+        let chance = self.calculate_discount_chance();
+        let random = (Instant::now().elapsed().as_nanos() % 100) as u32;
+        if random < chance {
+            let amount = 10 + self.vip_level * 5;
+            Some(amount.min(50))
+        } else {
+            None
+        }
+    }
+
+    fn record_purchase(&mut self) {
+        self.stats.purchases += 1;
+        if self.stats.purchases % 10 == 0 {
+            self.vip_level += 1;
+        }
+        self.discount_chance = self.calculate_discount_chance();
+    }
+
     fn on_key(&mut self, key: KeyCode) {
         match key {
             KeyCode::Char('q') | KeyCode::Char('Q') => {
                 self.should_quit = true;
             }
             KeyCode::Char('1') => {
-                if self.pet.spend(10) {
+                let price = 10;
+                if let Some(discount) = self.try_discount() {
+                    let final_price = (price as f32 * (1.0 - discount as f32 / 100.0)) as u32;
+                    if self.pet.spend(final_price) {
+                        self.pet.feed(20.0);
+                        self.record_purchase();
+                        self.hooks
+                            .trigger("on_purchase", &HookContext { entity: 0 });
+                        self.add_message(format!(
+                            "🎉 {}% discount! Paid {}g",
+                            discount, final_price
+                        ));
+                    } else {
+                        self.add_message("Not enough gold!".to_string());
+                    }
+                } else if self.pet.spend(price) {
                     self.pet.feed(20.0);
-                    self.stats.purchases += 1;
+                    self.record_purchase();
                     self.hooks
                         .trigger("on_purchase", &HookContext { entity: 0 });
                     self.add_message("Bought Basic Food! (+20 hunger)".to_string());
@@ -217,9 +262,24 @@ impl App {
                 }
             }
             KeyCode::Char('2') => {
-                if self.pet.spend(25) {
+                let price = 25;
+                if let Some(discount) = self.try_discount() {
+                    let final_price = (price as f32 * (1.0 - discount as f32 / 100.0)) as u32;
+                    if self.pet.spend(final_price) {
+                        self.pet.feed(50.0);
+                        self.record_purchase();
+                        self.hooks
+                            .trigger("on_purchase", &HookContext { entity: 0 });
+                        self.add_message(format!(
+                            "🎉 {}% discount! Paid {}g",
+                            discount, final_price
+                        ));
+                    } else {
+                        self.add_message("Not enough gold!".to_string());
+                    }
+                } else if self.pet.spend(price) {
                     self.pet.feed(50.0);
-                    self.stats.purchases += 1;
+                    self.record_purchase();
                     self.hooks
                         .trigger("on_purchase", &HookContext { entity: 0 });
                     self.add_message("Bought Premium Food! (+50 hunger)".to_string());
@@ -228,9 +288,24 @@ impl App {
                 }
             }
             KeyCode::Char('3') => {
-                if self.pet.spend(50) {
+                let price = 50;
+                if let Some(discount) = self.try_discount() {
+                    let final_price = (price as f32 * (1.0 - discount as f32 / 100.0)) as u32;
+                    if self.pet.spend(final_price) {
+                        self.pet.heal(30.0);
+                        self.record_purchase();
+                        self.hooks
+                            .trigger("on_purchase", &HookContext { entity: 0 });
+                        self.add_message(format!(
+                            "🎉 {}% discount! Paid {}g",
+                            discount, final_price
+                        ));
+                    } else {
+                        self.add_message("Not enough gold!".to_string());
+                    }
+                } else if self.pet.spend(price) {
                     self.pet.heal(30.0);
-                    self.stats.purchases += 1;
+                    self.record_purchase();
                     self.hooks
                         .trigger("on_purchase", &HookContext { entity: 0 });
                     self.add_message("Bought Elixir! (+30 health)".to_string());
@@ -369,6 +444,22 @@ fn create_pet_status(app: &App) -> Paragraph<'_> {
                 format!("{}", app.pet.gold),
                 Style::default()
                     .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("VIP: ", Style::default().fg(Color::White)),
+            Span::styled(
+                format!("Lv.{}", app.vip_level),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  Disc: ", Style::default().fg(Color::White)),
+            Span::styled(
+                format!("{}%", app.discount_chance),
+                Style::default()
+                    .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             ),
         ]),

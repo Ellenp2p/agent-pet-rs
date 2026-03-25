@@ -2,6 +2,9 @@
 //!
 //! 负责加载和解析插件 Manifest 文件。
 
+use crate::error::FrameworkError;
+use std::path::Path;
+
 /// Manifest 加载器
 pub struct PluginManifestLoader;
 

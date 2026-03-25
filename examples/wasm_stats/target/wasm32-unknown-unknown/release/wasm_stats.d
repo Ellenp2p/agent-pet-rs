@@ -1,0 +1,1 @@
+C:\Users\bujih\Desktop\code\github\ellenp2p\pet-rs\examples\wasm_stats\target\wasm32-unknown-unknown\release\wasm_stats.wasm: C:\Users\bujih\Desktop\code\github\ellenp2p\pet-rs\examples\wasm_stats\src\lib.rs

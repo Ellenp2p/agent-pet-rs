@@ -2,6 +2,8 @@
 //!
 //! 负责验证插件的完整性和安全性。
 
+use crate::error::FrameworkError;
+
 /// 插件验证器
 pub struct PluginValidator {
     /// 是否启用安全检查

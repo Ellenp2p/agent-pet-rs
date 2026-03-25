@@ -1,0 +1,1 @@
+C:\Users\bujih\Desktop\code\github\ellenp2p\pet-rs\examples\wasm_consumption\target\wasm32-unknown-unknown\release\libwasm_consumption.rlib: C:\Users\bujih\Desktop\code\github\ellenp2p\pet-rs\examples\wasm_consumption\src\lib.rs

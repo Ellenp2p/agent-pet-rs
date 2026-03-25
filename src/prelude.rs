@@ -23,6 +23,7 @@ pub use crate::decision::engine::{
 pub use crate::decision::rule_based::{Rule, RuleBasedEngine};
 
 // Memory modules
+pub use crate::memory::compaction::{CompactionStrategy, MemoryCompactor, MemoryPersistence};
 pub use crate::memory::long_term::LongTermMemory;
 pub use crate::memory::memory_impl::{Memory, MemoryEntry};
 pub use crate::memory::short_term::ShortTermMemory;

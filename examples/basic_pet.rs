@@ -1064,7 +1064,7 @@ fn main() {
     // Initialize WasmPluginHost with config manager
     #[cfg(feature = "wasm-plugin")]
     {
-        let mut wasm_host = WasmPluginHost::default();
+        let mut wasm_host = BevyWasmPluginHost::default();
 
         // Load configuration file
         let config_path = std::path::Path::new("examples/config.json");
@@ -1080,7 +1080,7 @@ fn main() {
             log::warn!("Config file not found at {:?}", config_path);
         }
 
-        app.insert_resource(BevyWasmPluginHost(wasm_host));
+        app.insert_resource(wasm_host);
     }
 
     #[cfg(not(feature = "wasm-plugin"))]

@@ -25,26 +25,29 @@ pub async fn handle_key_event(key: KeyEvent, app: &mut crate::app::App) -> anyho
                     app.messages
                         .push(crate::app::DisplayMessage::system(&response));
                     app.input.clear();
+                    app.reset_cursor();
                 } else {
                     // 发送消息给 AI
                     app.send_message().await?;
+                    app.reset_cursor();
                 }
             }
         }
         // 退格删除字符
         KeyCode::Backspace => {
-            app.input.pop();
+            app.delete_char();  // 使用新方法
         }
         // 删除字符
         KeyCode::Delete => {
             // 暂时不处理
         }
-        // 左右移动光标
+        // 左移动光标
         KeyCode::Left => {
-            // 暂时不处理
+            app.move_cursor_left();
         }
+        // 右移动光标
         KeyCode::Right => {
-            // 暂时不处理
+            app.move_cursor_right();
         }
         // Tab 切换位置
         KeyCode::Tab => {
@@ -86,7 +89,7 @@ pub async fn handle_key_event(key: KeyEvent, app: &mut crate::app::App) -> anyho
         }
         // 普通字符输入
         KeyCode::Char(c) => {
-            app.input.push(c);
+            app.enter_char(c);  // 使用新方法
         }
         _ => {}
     }

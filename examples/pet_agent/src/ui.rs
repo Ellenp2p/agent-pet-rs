@@ -3,7 +3,7 @@
 //! 使用 ratatui 渲染界面。
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Position},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
@@ -185,6 +185,14 @@ fn render_input(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         .style(input_style);
 
     f.render_widget(input_paragraph, chunks[0]);
+
+    // 显示光标
+    if !app.is_thinking {
+        f.set_cursor_position(Position::new(
+            chunks[0].x + 13 + app.character_index as u16, // "输入消息: " = 13 字符
+            chunks[0].y + 1,
+        ));
+    }
 
     // 快捷键提示
     let shortcuts = Line::from(vec![

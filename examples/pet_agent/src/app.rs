@@ -14,6 +14,7 @@ pub struct App {
     pub animation: Animation,
     pub provider_manager: Option<ProviderManager>,
     pub input: String,
+    pub character_index: usize,  // 光标位置
     pub messages: Vec<DisplayMessage>,
     pub should_quit: bool,
     pub is_thinking: bool,
@@ -67,6 +68,7 @@ impl App {
             animation,
             provider_manager,
             input: String::new(),
+            character_index: 0,  // 初始化光标位置
             messages: Vec::new(),
             should_quit: false,
             is_thinking: false,
@@ -157,6 +159,70 @@ impl App {
     pub fn clear_messages(&mut self) {
         self.messages.clear();
     }
+
+    // ========== 输入处理方法 ==========
+
+    /// 移动光标向左
+    pub fn move_cursor_left(&mut self) {
+        let cursor_moved_left = self.character_index.saturating_sub(1);
+        self.character_index = self.clamp_cursor(cursor_moved_left);
+    }
+
+    /// 移动光标向右
+    pub fn move_cursor_right(&mut self) {
+        let cursor_moved_right = self.character_index.saturating_add(1);
+        self.character_index = self.clamp_cursor(cursor_moved_right);
+    }
+
+    /// 在光标位置插入字符
+    pub fn enter_char(&mut self, new_char: char) {
+        let index = self.byte_index();
+        self.input.insert(index, new_char);
+        self.move_cursor_right();
+    }
+
+    /// 删除光标前的字符
+    pub fn delete_char(&mut self) {
+        let is_not_cursor_leftmost = self.character_index != 0;
+        if is_not_cursor_leftmost {
+            let current_index = self.character_index;
+            let from_left_to_current_index = current_index - 1;
+
+            let before_char_to_delete = self.input.chars().take(from_left_to_current_index);
+            let after_char_to_delete = self.input.chars().skip(current_index);
+
+            self.input = before_char_to_delete.chain(after_char_to_delete).collect();
+            self.move_cursor_left();
+        }
+    }
+
+    /// 计算字节索引（基于字符位置）
+    fn byte_index(&self) -> usize {
+        self.input
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.character_index)
+            .unwrap_or(self.input.len())
+    }
+
+    /// 限制光标位置在有效范围内
+    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
+        new_cursor_pos.clamp(0, self.input.chars().count())
+    }
+
+    /// 重置光标位置到开头
+    pub fn reset_cursor(&mut self) {
+        self.character_index = 0;
+    }
+
+    /// 提交消息
+    pub fn submit_message(&mut self) {
+        self.messages.push(DisplayMessage::user(&self.input));
+        self.input.clear();
+        self.reset_cursor();
+    }
+
+    // ========== 其他方法 ==========
 
     pub fn save(&self) -> anyhow::Result<()> {
         self.memory.save(&self.config.memory_path())

@@ -62,7 +62,7 @@ impl ProviderType {
 
     pub fn default_model(&self) -> &'static str {
         match self {
-            Self::OpenRouter => "google/gemma-3-27b-it:free",
+            Self::OpenRouter => "stepfun/step-3.5-flash:free",
             Self::OpenAI => "gpt-4o-mini",
             Self::Ollama => "llama3",
             Self::Custom => "",

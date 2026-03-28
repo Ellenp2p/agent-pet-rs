@@ -89,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Event::Tick => {
                     // 更新游戏状态
+                    app.update_toasts();  // 更新 Toast 通知
                 }
                 Event::Render => {
                     // 渲染 UI
@@ -102,6 +103,31 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Event::Resize(_, _) => {
                     // 处理窗口大小变化
+                }
+                Event::AiResponse(response) => {
+                    // 处理 AI 响应
+                    app.messages
+                        .push(crate::app::DisplayMessage::pet(&app.pet.name, &response));
+                    app.is_thinking = false;
+                    app.pet.set_state(crate::pet::PetState::Happy);
+                    app.add_toast("消息发送成功", crate::app::ToastType::Success);
+                }
+                Event::AiError(error) => {
+                    // 处理 AI 错误
+                    app.messages
+                        .push(crate::app::DisplayMessage::system(&format!("AI 错误: {}", error)));
+                    app.is_thinking = false;
+                    app.pet.set_state(crate::pet::PetState::Idle);
+                    app.add_toast(&format!("错误: {}", error), crate::app::ToastType::Error);
+                }
+                Event::Toast(message, is_error) => {
+                    // 处理 Toast 通知
+                    let toast_type = if is_error {
+                        crate::app::ToastType::Error
+                    } else {
+                        crate::app::ToastType::Info
+                    };
+                    app.add_toast(&message, toast_type);
                 }
             }
         }

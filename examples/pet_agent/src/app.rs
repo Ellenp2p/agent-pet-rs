@@ -6,6 +6,27 @@ use crate::config::Config;
 use crate::location::Location;
 use crate::memory::Memory;
 use crate::pet::{Pet, PetState};
+use tui_textarea::TextArea;
+use std::time::Instant;
+use std::time::Duration;
+
+/// Toast 通知类型
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToastType {
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
+/// Toast 通知
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub message: String,
+    pub toast_type: ToastType,
+    pub created_at: Instant,
+    pub duration: Duration,
+}
 
 pub struct App {
     pub config: Config,
@@ -13,9 +34,10 @@ pub struct App {
     pub memory: Memory,
     pub animation: Animation,
     pub provider_manager: Option<ProviderManager>,
-    pub input: String,
-    pub character_index: usize,  // 光标位置
+    pub textarea: TextArea<'static>,  // 使用 tui-textarea
+    pub character_index: usize,  // 保留用于兼容性
     pub messages: Vec<DisplayMessage>,
+    pub toasts: Vec<Toast>,  // Toast 通知
     pub should_quit: bool,
     pub is_thinking: bool,
     pub location_index: usize,
@@ -61,15 +83,24 @@ impl App {
             None
         };
 
+        // 创建 tui-textarea 实例
+        let mut textarea = TextArea::default();
+        textarea.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("输入消息")
+        );
+
         Ok(Self {
             config,
             pet,
             memory,
             animation,
             provider_manager,
-            input: String::new(),
-            character_index: 0,  // 初始化光标位置
+            textarea,
+            character_index: 0,
             messages: Vec::new(),
+            toasts: Vec::new(),
             should_quit: false,
             is_thinking: false,
             location_index: 0,
@@ -78,12 +109,21 @@ impl App {
     }
 
     pub async fn send_message(&mut self) -> anyhow::Result<()> {
-        if self.input.is_empty() {
+        // 从 textarea 获取输入内容
+        let input = self.textarea.lines().join("\n");
+        if input.is_empty() {
             return Ok(());
         }
 
-        let user_message = self.input.clone();
-        self.input.clear();
+        // 清空 textarea
+        self.textarea = TextArea::default();
+        self.textarea.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("输入消息")
+        );
+
+        let user_message = input;
         self.messages.push(DisplayMessage::user(&user_message));
         self.pet.set_state(PetState::Thinking);
         self.is_thinking = true;
@@ -100,15 +140,18 @@ impl App {
                     self.pet.set_state(PetState::Happy);
                     self.pet.boost_happiness(5.0);
                     self.messages.push(DisplayMessage::system(&format!("📊 {}", manager.usage_summary())));
+                    self.add_toast("消息发送成功", ToastType::Success);
                 }
                 Err(e) => {
                     self.messages.push(DisplayMessage::system(&format!("AI 错误: {}", e)));
                     self.pet.set_state(PetState::Idle);
+                    self.add_toast(&format!("错误: {}", e), ToastType::Error);
                 }
             }
         } else {
             self.messages.push(DisplayMessage::system("请先配置 AI 提供商 (/setup)"));
             self.pet.set_state(PetState::Idle);
+            self.add_toast("请先配置 AI 提供商", ToastType::Warning);
         }
 
         self.is_thinking = false;
@@ -160,73 +203,25 @@ impl App {
         self.messages.clear();
     }
 
-    // ========== 输入处理方法 ==========
+    // ========== Toast 通知 ==========
 
-    /// 移动光标向左
-    pub fn move_cursor_left(&mut self) {
-        let cursor_moved_left = self.character_index.saturating_sub(1);
-        self.character_index = self.clamp_cursor(cursor_moved_left);
+    /// 添加 Toast 通知
+    pub fn add_toast(&mut self, message: &str, toast_type: ToastType) {
+        self.toasts.push(Toast {
+            message: message.to_string(),
+            toast_type,
+            created_at: Instant::now(),
+            duration: Duration::from_secs(3),
+        });
     }
 
-    /// 移动光标向右
-    pub fn move_cursor_right(&mut self) {
-        let cursor_moved_right = self.character_index.saturating_add(1);
-        self.character_index = self.clamp_cursor(cursor_moved_right);
-    }
-
-    /// 在光标位置插入字符
-    pub fn enter_char(&mut self, new_char: char) {
-        let index = self.byte_index();
-        self.input.insert(index, new_char);
-        self.move_cursor_right();
-    }
-
-    /// 删除光标前的字符
-    pub fn delete_char(&mut self) {
-        let is_not_cursor_leftmost = self.character_index != 0;
-        if is_not_cursor_leftmost {
-            let current_index = self.character_index;
-            let from_left_to_current_index = current_index - 1;
-
-            let before_char_to_delete = self.input.chars().take(from_left_to_current_index);
-            let after_char_to_delete = self.input.chars().skip(current_index);
-
-            self.input = before_char_to_delete.chain(after_char_to_delete).collect();
-            self.move_cursor_left();
-        }
-    }
-
-    /// 计算字节索引（基于字符位置）
-    fn byte_index(&self) -> usize {
-        self.input
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(self.character_index)
-            .unwrap_or(self.input.len())
-    }
-
-    /// 限制光标位置在有效范围内
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        new_cursor_pos.clamp(0, self.input.chars().count())
-    }
-
-    /// 重置光标位置到开头
-    pub fn reset_cursor(&mut self) {
-        self.character_index = 0;
-    }
-
-    /// 提交消息
-    pub fn submit_message(&mut self) {
-        self.messages.push(DisplayMessage::user(&self.input));
-        self.input.clear();
-        self.reset_cursor();
+    /// 更新 Toast（移除过期的通知）
+    pub fn update_toasts(&mut self) {
+        let now = Instant::now();
+        self.toasts.retain(|t| now.duration_since(t.created_at) < t.duration);
     }
 
     // ========== 其他方法 ==========
-
-    pub fn save(&self) -> anyhow::Result<()> {
-        self.memory.save(&self.config.memory_path())
-    }
 
     pub fn provider_status(&self) -> String {
         if let Some(ref pm) = self.provider_manager {
@@ -254,5 +249,9 @@ impl App {
         } else {
             Err("未配置".to_string())
         }
+    }
+
+    pub fn save(&self) -> anyhow::Result<()> {
+        self.memory.save(&self.config.memory_path())
     }
 }

@@ -17,12 +17,13 @@ use crate::location::Location;
 pub fn render(f: &mut Frame, app: &App) {
     // UI 渲染逻辑
 
-    // 主布局：标题、内容、输入
+    // 主布局：标题、内容、Toast、输入
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // 标题
             Constraint::Min(10),   // 内容
+            Constraint::Length(6), // Toast 区域
             Constraint::Length(5), // 输入区域
         ])
         .split(f.area());
@@ -45,8 +46,11 @@ pub fn render(f: &mut Frame, app: &App) {
     // 渲染对话历史
     render_messages(f, content_chunks[1], app);
 
-    // 渲染输入区域
-    render_input(f, main_chunks[2], app);
+    // 渲染 Toast 通知
+    render_toasts(f, main_chunks[2], app);
+
+    // 渲染输入区域（使用 tui-textarea）
+    render_input(f, main_chunks[3], app);
 }
 
 /// 渲染标题
@@ -157,7 +161,7 @@ fn render_messages(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
     f.render_widget(messages_list, area);
 }
 
-/// 渲染输入区域
+/// 渲染输入区域（使用 tui-textarea）
 fn render_input(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -167,32 +171,8 @@ fn render_input(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         ])
         .split(area);
 
-    // 输入框
-    let input_text = if app.is_thinking {
-        format!("{} ...", app.animation.thinking_message())
-    } else {
-        format!("输入消息: {}", app.input)
-    };
-
-    let input_style = if app.is_thinking {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default().fg(Color::White)
-    };
-
-    let input_paragraph = Paragraph::new(input_text)
-        .block(Block::default().borders(Borders::ALL))
-        .style(input_style);
-
-    f.render_widget(input_paragraph, chunks[0]);
-
-    // 显示光标
-    if !app.is_thinking {
-        f.set_cursor_position(Position::new(
-            chunks[0].x + 13 + app.character_index as u16, // "输入消息: " = 13 字符
-            chunks[0].y + 1,
-        ));
-    }
+    // 渲染 tui-textarea
+    f.render_widget(&app.textarea, chunks[0]);
 
     // 快捷键提示
     let shortcuts = Line::from(vec![
@@ -209,4 +189,30 @@ fn render_input(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
         .wrap(Wrap { trim: true });
 
     f.render_widget(shortcuts_paragraph, chunks[1]);
+}
+
+/// 渲染 Toast 通知
+fn render_toasts(f: &mut Frame, area: ratatui::layout::Rect, app: &App) {
+    let toast_items: Vec<ListItem> = app
+        .toasts
+        .iter()
+        .map(|toast| {
+            let style = match toast.toast_type {
+                crate::app::ToastType::Info => Style::default().fg(Color::Cyan),
+                crate::app::ToastType::Success => Style::default().fg(Color::Green),
+                crate::app::ToastType::Warning => Style::default().fg(Color::Yellow),
+                crate::app::ToastType::Error => Style::default().fg(Color::Red),
+            };
+            ListItem::new(Line::from(Span::styled(&toast.message, style)))
+        })
+        .collect();
+
+    let toast_list = List::new(toast_items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title("通知")
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+
+    f.render_widget(toast_list, area);
 }

@@ -38,6 +38,12 @@ pub enum Event {
     Mouse(MouseEvent),
     /// 窗口大小变化
     Resize(u16, u16),
+    /// AI 响应成功
+    AiResponse(String),
+    /// AI 错误
+    AiError(String),
+    /// Toast 通知 (message, is_error)
+    Toast(String, bool),
 }
 
 /// TUI 终端管理器

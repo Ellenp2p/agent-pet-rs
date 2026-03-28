@@ -1,98 +1,101 @@
 //! 事件处理模块
 //!
 //! 处理键盘和鼠标事件。
+//! 使用 tui-textarea 处理输入。
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 
 /// 处理键盘事件
 pub async fn handle_key_event(key: KeyEvent, app: &mut crate::app::App) -> anyhow::Result<()> {
+    // 特殊按键处理
     match key.code {
         // 退出
         KeyCode::Esc => {
             app.should_quit = true;
+            return Ok(());
         }
         // Ctrl+C 退出
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.should_quit = true;
+            return Ok(());
         }
         // 回车发送消息
         KeyCode::Enter => {
-            if !app.input.is_empty() {
+            let input = app.textarea.lines().join("\n");
+            if !input.is_empty() {
                 // 检查是否是命令
-                if app.input.starts_with('/') {
-                    let command = crate::commands::parse_command(&app.input);
+                if input.starts_with('/') {
+                    let command = crate::commands::parse_command(&input);
                     let response = crate::commands::execute_command(app, command).await;
                     app.messages
                         .push(crate::app::DisplayMessage::system(&response));
-                    app.input.clear();
-                    app.reset_cursor();
+                    // 清空输入
+                    app.textarea = tui_textarea::TextArea::default();
+                    app.textarea.set_block(
+                        ratatui::widgets::Block::default()
+                            .borders(ratatui::widgets::Borders::ALL)
+                            .title("输入消息")
+                    );
                 } else {
                     // 发送消息给 AI
                     app.send_message().await?;
-                    app.reset_cursor();
                 }
             }
-        }
-        // 退格删除字符
-        KeyCode::Backspace => {
-            app.delete_char();  // 使用新方法
-        }
-        // 删除字符
-        KeyCode::Delete => {
-            // 暂时不处理
-        }
-        // 左移动光标
-        KeyCode::Left => {
-            app.move_cursor_left();
-        }
-        // 右移动光标
-        KeyCode::Right => {
-            app.move_cursor_right();
+            return Ok(());
         }
         // Tab 切换位置
         KeyCode::Tab => {
             app.switch_location();
+            return Ok(());
         }
         // F1 喂食
         KeyCode::F(1) => {
             app.feed();
+            return Ok(());
         }
         // F2 玩耍
         KeyCode::F(2) => {
             app.play();
+            return Ok(());
         }
         // F3 休息
         KeyCode::F(3) => {
             app.rest();
+            return Ok(());
         }
         // F4 探索
         KeyCode::F(4) => {
             app.explore();
+            return Ok(());
         }
         // F5 设置
         KeyCode::F(5) => {
             app.messages
                 .push(crate::app::DisplayMessage::system("设置功能待实现"));
+            return Ok(());
         }
-        // 数字键切换位置
-        KeyCode::Char('1') => {
+        // 数字键切换位置（仅在非编辑模式下）
+        KeyCode::Char('1') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.set_location(0);
+            return Ok(());
         }
-        KeyCode::Char('2') => {
+        KeyCode::Char('2') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.set_location(1);
+            return Ok(());
         }
-        KeyCode::Char('3') => {
+        KeyCode::Char('3') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.set_location(2);
+            return Ok(());
         }
-        KeyCode::Char('4') => {
+        KeyCode::Char('4') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
             app.set_location(3);
-        }
-        // 普通字符输入
-        KeyCode::Char(c) => {
-            app.enter_char(c);  // 使用新方法
+            return Ok(());
         }
         _ => {}
     }
+
+    // 其他按键交给 tui-textarea 处理
+    app.textarea.input(key);
     Ok(())
 }
 
@@ -117,9 +120,6 @@ pub async fn handle_mouse_event(
                     app.set_location(3); // 后院农场
                 }
             }
-
-            // 检测快捷键点击 (最后一行)
-            // 这里需要根据实际布局调整
         }
         MouseEventKind::ScrollUp => {
             // 向上滚动消息历史

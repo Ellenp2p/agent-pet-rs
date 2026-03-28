@@ -2,46 +2,7 @@
 //!
 //! 处理键盘和鼠标事件。
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
-use std::time::Duration;
-
-/// 应用事件
-pub enum AppEvent {
-    /// 键盘事件
-    Key(KeyEvent),
-    /// 鼠标事件
-    Mouse(MouseEvent),
-    /// 无事件
-    None,
-}
-
-/// 事件处理器
-pub struct EventHandler {
-    /// 事件轮询间隔
-    tick_rate: Duration,
-}
-
-impl EventHandler {
-    /// 创建新事件处理器
-    pub fn new(tick_rate_ms: u64) -> Self {
-        Self {
-            tick_rate: Duration::from_millis(tick_rate_ms),
-        }
-    }
-
-    /// 读取事件
-    pub fn next(&self) -> anyhow::Result<AppEvent> {
-        if event::poll(self.tick_rate)? {
-            match event::read()? {
-                Event::Key(key) => Ok(AppEvent::Key(key)),
-                Event::Mouse(mouse) => Ok(AppEvent::Mouse(mouse)),
-                _ => Ok(AppEvent::None),
-            }
-        } else {
-            Ok(AppEvent::None)
-        }
-    }
-}
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 
 /// 处理键盘事件
 pub async fn handle_key_event(key: KeyEvent, app: &mut crate::app::App) -> anyhow::Result<()> {

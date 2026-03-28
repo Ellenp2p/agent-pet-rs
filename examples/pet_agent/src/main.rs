@@ -17,15 +17,10 @@ mod event;
 mod location;
 mod memory;
 mod pet;
+mod tui;
 mod ui;
 
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io;
+use tui::{Event, Tui};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,14 +29,15 @@ async fn main() -> anyhow::Result<()> {
 
     // 如果需要设置，先进行设置
     if app.needs_setup {
+        // 先退出 TUI 模式
         println!("欢迎使用桌面宠物 Agent！");
         println!("请输入你的 OpenRouter API Key:");
         println!("(可以在 https://openrouter.ai/keys 获取)");
         print!("> ");
-        io::Write::flush(&mut io::stdout())?;
+        std::io::Write::flush(&mut std::io::stdout())?;
 
         let mut api_key = String::new();
-        io::stdin().read_line(&mut api_key)?;
+        std::io::stdin().read_line(&mut api_key)?;
         let api_key = api_key.trim();
 
         if api_key.is_empty() {
@@ -59,44 +55,14 @@ async fn main() -> anyhow::Result<()> {
         println!("配置已保存！启动宠物...\n");
     }
 
-    // 设置终端
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    // 创建 TUI
+    let mut tui = Tui::new()?
+        .tick_rate(4.0) // 4 ticks per second
+        .frame_rate(30.0) // 30 frames per second
+        .mouse(true); // 启用鼠标
 
-    // 运行应用
-    let result = run_app(&mut terminal, &mut app).await;
-
-    // 恢复终端
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
-    // 保存状态
-    if let Err(e) = app.save() {
-        eprintln!("保存状态失败: {}", e);
-    }
-
-    // 处理错误
-    if let Err(err) = result {
-        eprintln!("应用错误: {:?}", err);
-    }
-
-    Ok(())
-}
-
-/// 运行应用
-async fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut app::App,
-) -> anyhow::Result<()> {
-    let event_handler = event::EventHandler::new(app.config.settings.animation_speed);
+    // 进入终端模式
+    tui.enter()?;
 
     // 添加欢迎消息
     app.messages.push(app::DisplayMessage::system(&format!(
@@ -107,20 +73,36 @@ async fn run_app(
         "输入消息和我聊天，或者按 /help 查看帮助",
     ));
 
+    // 主循环
     loop {
-        // 渲染 UI
-        terminal.draw(|f| ui::render(f, app))?;
-
         // 处理事件
-        match event_handler.next()? {
-            event::AppEvent::Key(key) => {
-                event::handle_key_event(key, app).await?;
-            }
-            event::AppEvent::Mouse(mouse) => {
-                event::handle_mouse_event(mouse, app).await?;
-            }
-            event::AppEvent::None => {
-                // 无事件，继续
+        if let Some(event) = tui.next().await {
+            match event {
+                Event::Init => {
+                    // 初始化
+                }
+                Event::Quit => {
+                    break;
+                }
+                Event::Error => {
+                    // 错误处理
+                }
+                Event::Tick => {
+                    // 更新游戏状态
+                }
+                Event::Render => {
+                    // 渲染 UI
+                    tui.draw(|f| ui::render(f, &app))?;
+                }
+                Event::Key(key) => {
+                    event::handle_key_event(key, &mut app).await?;
+                }
+                Event::Mouse(mouse) => {
+                    event::handle_mouse_event(mouse, &mut app).await?;
+                }
+                Event::Resize(_, _) => {
+                    // 处理窗口大小变化
+                }
             }
         }
 
@@ -128,6 +110,14 @@ async fn run_app(
         if app.should_quit {
             break;
         }
+    }
+
+    // 退出终端模式
+    tui.exit()?;
+
+    // 保存状态
+    if let Err(e) = app.save() {
+        eprintln!("保存状态失败: {}", e);
     }
 
     Ok(())

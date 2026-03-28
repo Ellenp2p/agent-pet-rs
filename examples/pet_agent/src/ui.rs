@@ -14,9 +14,8 @@ use crate::app::App;
 use crate::location::Location;
 
 /// 渲染 UI
-pub fn render(f: &mut Frame, app: &mut App) {
-    // 更新动画
-    app.animation.update();
+pub fn render(f: &mut Frame, app: &App) {
+    // UI 渲染逻辑
 
     // 主布局：标题、内容、输入
     let main_chunks = Layout::default()

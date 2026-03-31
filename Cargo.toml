@@ -16,6 +16,9 @@ log = "0.4"
 tracing = "0.1"
 thiserror = "1"
 async-trait = "0.1"
+aes-gcm = "0.10"
+base64 = "0.22"
+rand = "0.8"
 
 [dependencies.uuid]
 version = "1"

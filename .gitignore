@@ -2,3 +2,5 @@
 Cargo.lock
 *.exe
 *.pdb
+examples/pet_agent/target/
+.DS_Store

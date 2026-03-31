@@ -4,6 +4,7 @@ use super::provider::RateLimitConfig;
 use super::AIError;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 /// 速率限制器
 pub struct RateLimiter {
@@ -100,7 +101,7 @@ impl RateLimiter {
         Ok(())
     }
 
-    pub fn wait_if_needed(&mut self, tokens: u32) -> Result<(), AIError> {
+    pub async fn wait_if_needed(&mut self, tokens: u32) -> Result<(), AIError> {
         if !self.config.enabled {
             return Ok(());
         }
@@ -111,7 +112,7 @@ impl RateLimiter {
                 Err(AIError::RateLimited(msg)) => {
                     let wait = self.calculate_wait_time();
                     log::warn!("速率限制: {}，等待 {:?}", msg, wait);
-                    std::thread::sleep(wait);
+                    sleep(wait).await;
                 }
                 Err(e) => return Err(e),
             }

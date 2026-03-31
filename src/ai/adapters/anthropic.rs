@@ -101,8 +101,7 @@ impl AIProvider for AnthropicProvider {
         messages: Vec<ChatMessage>,
         config: &ProviderConfig,
     ) -> Result<ChatResponse, AIError> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| AIError::NetworkError(e.to_string()))?;
+        let rt = tokio::runtime::Handle::current();
 
         rt.block_on(self.chat_async(messages, config))
     }
@@ -113,8 +112,7 @@ impl AIProvider for AnthropicProvider {
         config: &ProviderConfig,
         on_chunk: Box<dyn Fn(String) + Send>,
     ) -> Result<ChatResponse, AIError> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| AIError::NetworkError(e.to_string()))?;
+        let rt = tokio::runtime::Handle::current();
 
         rt.block_on(self.chat_stream_async(messages, config, on_chunk))
     }
@@ -145,7 +143,10 @@ impl AnthropicProvider {
         messages: Vec<ChatMessage>,
         config: &ProviderConfig,
     ) -> Result<ChatResponse, AIError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AIError::NetworkError(e.to_string()))?;
         let api_base = config.api_base();
         let (system, anthropic_messages) = Self::convert_messages(messages);
 
@@ -205,7 +206,10 @@ impl AnthropicProvider {
         config: &ProviderConfig,
         on_chunk: Box<dyn Fn(String) + Send>,
     ) -> Result<ChatResponse, AIError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AIError::NetworkError(e.to_string()))?;
         let api_base = config.api_base();
         let (system, anthropic_messages) = Self::convert_messages(messages);
 
@@ -239,8 +243,8 @@ impl AnthropicProvider {
             .map_err(|e| AIError::NetworkError(e.to_string()))?;
 
         let mut full_content = String::new();
-        let total_input_tokens = 0u32;
-        let total_output_tokens = 0u32;
+        let mut total_input_tokens = 0u32;
+        let mut total_output_tokens = 0u32;
         let mut finish_reason = String::new();
 
         for line in body.lines() {
@@ -264,8 +268,11 @@ impl AnthropicProvider {
                                 finish_reason = reason;
                             }
                         }
-                        "message_start" | "message_stop" => {
-                            // 可以在这里处理 usage
+                        "message_stop" => {
+                            if let Some(usage) = event.usage {
+                                total_input_tokens = usage.input_tokens;
+                                total_output_tokens = usage.output_tokens;
+                            }
                         }
                         _ => {}
                     }

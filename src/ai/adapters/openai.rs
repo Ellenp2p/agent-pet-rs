@@ -53,6 +53,7 @@ struct UsageInner {
 #[derive(Deserialize)]
 struct SSEChunk {
     choices: Vec<SSEChoice>,
+    usage: Option<UsageInner>,
 }
 
 #[derive(Deserialize)]
@@ -89,8 +90,7 @@ impl AIProvider for OpenAIProvider {
         messages: Vec<ChatMessage>,
         config: &ProviderConfig,
     ) -> Result<ChatResponse, AIError> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| AIError::NetworkError(e.to_string()))?;
+        let rt = tokio::runtime::Handle::current();
 
         rt.block_on(self.chat_async(messages, config))
     }
@@ -101,8 +101,7 @@ impl AIProvider for OpenAIProvider {
         config: &ProviderConfig,
         on_chunk: Box<dyn Fn(String) + Send>,
     ) -> Result<ChatResponse, AIError> {
-        let rt =
-            tokio::runtime::Runtime::new().map_err(|e| AIError::NetworkError(e.to_string()))?;
+        let rt = tokio::runtime::Handle::current();
 
         rt.block_on(self.chat_stream_async(messages, config, on_chunk))
     }
@@ -114,7 +113,10 @@ impl OpenAIProvider {
         messages: Vec<ChatMessage>,
         config: &ProviderConfig,
     ) -> Result<ChatResponse, AIError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AIError::NetworkError(e.to_string()))?;
         let api_base = config.api_base();
         let request = ChatRequest {
             model: config.model.clone(),
@@ -174,7 +176,10 @@ impl OpenAIProvider {
         config: &ProviderConfig,
         on_chunk: Box<dyn Fn(String) + Send>,
     ) -> Result<ChatResponse, AIError> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AIError::NetworkError(e.to_string()))?;
         let api_base = config.api_base();
 
         let request = ChatRequest {
@@ -208,6 +213,8 @@ impl OpenAIProvider {
 
         let mut full_content = String::new();
         let mut finish_reason: Option<String> = None;
+        let mut input_tokens = 0u32;
+        let mut output_tokens = 0u32;
 
         for line in body.lines() {
             let line = line.trim();
@@ -228,6 +235,10 @@ impl OpenAIProvider {
                             finish_reason = choice.finish_reason.clone();
                         }
                     }
+                    if let Some(usage) = chunk.usage {
+                        input_tokens = usage.prompt_tokens;
+                        output_tokens = usage.completion_tokens;
+                    }
                 }
             }
         }
@@ -235,9 +246,9 @@ impl OpenAIProvider {
         Ok(ChatResponse {
             content: full_content,
             usage: TokenUsage {
-                input_tokens: 0,
-                output_tokens: 0,
-                total_tokens: 0,
+                input_tokens,
+                output_tokens,
+                total_tokens: input_tokens + output_tokens,
             },
             model: config.model.clone(),
             finish_reason: finish_reason.unwrap_or_default(),

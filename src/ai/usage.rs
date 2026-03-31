@@ -44,6 +44,8 @@ pub struct UsageStats {
     pub by_model: HashMap<String, ModelStats>,
 }
 
+const MAX_RECORDS: usize = 10000;
+
 /// 使用量追踪器
 pub struct UsageTracker {
     records: Vec<UsageRecord>,
@@ -81,6 +83,10 @@ impl UsageTracker {
 
         self.update_stats(&record);
         self.records.push(record);
+
+        if self.records.len() > MAX_RECORDS {
+            self.records.drain(0..self.records.len() / 2);
+        }
     }
 
     fn update_stats(&mut self, record: &UsageRecord) {
